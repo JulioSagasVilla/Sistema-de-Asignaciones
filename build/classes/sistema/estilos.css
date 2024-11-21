@@ -1,0 +1,32 @@
+/* estilos.css */
+.root {
+    -fx-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    -fx-font-size: 14px;
+}
+
+.button {
+    -fx-background-color: #007ACC;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 5;
+}
+
+.label {
+    -fx-text-fill: #333333;
+    -fx-font-weight: bold;
+}
+
+.text-field {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #CCCCCC;
+    -fx-border-radius: 5;
+    -fx-background-radius: 5;
+}
+
+.list-view {
+    -fx-background-color: #F9F9F9;
+}
+
+.table-view {
+    -fx-background-color: #FFFFFF;
+}
