@@ -12,20 +12,19 @@ import javafx.stage.Stage;
 import modelos.Asignacion;
 import modelos.Curso;
 import modelos.Estudiante;
+import bd.ConexionBD;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.sql.*;
 
 public class VentanaVerificacionCursos {
 
-    private List<Asignacion> asignaciones;
     private List<Curso> cursos;
 
     public VentanaVerificacionCursos() {
         cursos = obtenerCursos();
-        asignaciones = obtenerAsignaciones();
     }
 
     public void mostrar(Stage stagePrincipal) {
@@ -79,7 +78,6 @@ public class VentanaVerificacionCursos {
         layoutPrincipal.setStyle("-fx-padding: 20;");
 
         Scene scene = new Scene(layoutPrincipal, 800, 600);
-        scene.getStylesheets().add(getClass().getResource("estilos.css").toExternalForm());
         stage.setScene(scene);
 
         stage.setOnHidden(e -> stagePrincipal.show());
@@ -88,10 +86,54 @@ public class VentanaVerificacionCursos {
     }
 
     private void actualizarTablaYGrafico(Curso curso, LocalDate fecha, TableView<Asignacion> tabla, PieChart grafico) {
-        List<Asignacion> asignacionesFiltradas = asignaciones.stream()
-                .filter(a -> (curso == null || a.getCurso().equals(curso)) &&
-                        (fecha == null || a.getFechaAsignacion().equals(fecha)))
-                .collect(Collectors.toList());
+        List<Asignacion> asignacionesFiltradas = new ArrayList<>();
+        try (Connection conn = ConexionBD.obtenerConexion()) {
+            StringBuilder sqlBuilder = new StringBuilder();
+            sqlBuilder.append("SELECT a.carnet_estudiante, e.nombre, e.correo_electronico, a.fecha_asignacion, a.pagado, c.codigo, c.nombre AS nombre_curso ")
+                      .append("FROM asignaciones a ")
+                      .append("JOIN estudiantes e ON a.carnet_estudiante = e.carnet ")
+                      .append("JOIN cursos c ON a.codigo_curso = c.codigo ");
+
+            List<Object> parametros = new ArrayList<>();
+            boolean whereAdded = false;
+
+            if (curso != null) {
+                sqlBuilder.append("WHERE c.codigo = ? ");
+                parametros.add(curso.getCodigo());
+                whereAdded = true;
+            }
+
+            if (fecha != null) {
+                sqlBuilder.append(whereAdded ? "AND " : "WHERE ").append("a.fecha_asignacion = ? ");
+                parametros.add(java.sql.Date.valueOf(fecha));
+            }
+
+            PreparedStatement stmt = conn.prepareStatement(sqlBuilder.toString());
+
+            for (int i = 0; i < parametros.size(); i++) {
+                stmt.setObject(i + 1, parametros.get(i));
+            }
+
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                Estudiante estudiante = new Estudiante(
+                    rs.getString("nombre"),
+                    rs.getString("carnet_estudiante"),
+                    "",
+                    rs.getString("correo_electronico")
+                );
+                Curso cursoAsignado = new Curso(rs.getString("codigo"), rs.getString("nombre_curso"));
+                Asignacion asignacion = new Asignacion(
+                    estudiante,
+                    cursoAsignado,
+                    rs.getDate("fecha_asignacion").toLocalDate(),
+                    rs.getBoolean("pagado")
+                );
+                asignacionesFiltradas.add(asignacion);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
 
         ObservableList<Asignacion> datosTabla = FXCollections.observableArrayList(asignacionesFiltradas);
         tabla.setItems(datosTabla);
@@ -116,31 +158,18 @@ public class VentanaVerificacionCursos {
 
     private List<Curso> obtenerCursos() {
         List<Curso> listaCursos = new ArrayList<>();
-        listaCursos.add(new Curso("C001", "Matemáticas"));
-        listaCursos.add(new Curso("C002", "Física"));
-        listaCursos.add(new Curso("C003", "Química"));
-        listaCursos.add(new Curso("C004", "Biología"));
-        listaCursos.add(new Curso("C005", "Historia"));
+        try (Connection conn = ConexionBD.obtenerConexion()) {
+            String sql = "SELECT codigo, nombre FROM cursos";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String codigo = rs.getString("codigo");
+                String nombre = rs.getString("nombre");
+                listaCursos.add(new Curso(codigo, nombre));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return listaCursos;
-    }
-
-    private List<Asignacion> obtenerAsignaciones() {
-        List<Asignacion> listaAsignaciones = new ArrayList<>();
-        Estudiante estudiante1 = new Estudiante("Juan Pérez", "20210001", "5555-5555", "juan@example.com");
-        Estudiante estudiante2 = new Estudiante("María García", "20210002", "5555-6666", "maria@example.com");
-        Estudiante estudiante3 = new Estudiante("Carlos López", "20210003", "5555-7777", "carlos@example.com");
-        Estudiante estudiante4 = new Estudiante("Ana Torres", "20210004", "5555-8888", "ana@example.com");
-
-        Curso curso1 = cursos.get(0);
-        Curso curso2 = cursos.get(1);
-        Curso curso3 = cursos.get(2);
-
-        listaAsignaciones.add(new Asignacion(estudiante1, curso1, LocalDate.of(2023, 11, 12), true));
-        listaAsignaciones.add(new Asignacion(estudiante2, curso1, LocalDate.of(2023, 11, 12), false));
-        listaAsignaciones.add(new Asignacion(estudiante3, curso2, LocalDate.of(2023, 11, 13), true));
-        listaAsignaciones.add(new Asignacion(estudiante4, curso1, LocalDate.of(2023, 11, 14), true));
-        listaAsignaciones.add(new Asignacion(estudiante2, curso3, LocalDate.of(2023, 11, 14), false));
-
-        return listaAsignaciones;
     }
 }

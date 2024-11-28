@@ -5,9 +5,14 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import modelos.Curso;
+import modelos.Estudiante;
+import modelos.Asignacion;
+import bd.ConexionBD;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.sql.*;
 
 public class VentanaAsignaciones {
 
@@ -73,6 +78,12 @@ public class VentanaAsignaciones {
             validarFormulario(txtNombre, txtCarnet, txtTelefono, txtCorreo,
                     cursosSeleccionados, chkPagarAhora, txtNombreTarjeta, txtNumeroTarjeta,
                     txtFechaExpiracion, txtCodigoSeguridad, btnAsignar);
+        });
+
+        txtCarnet.focusedProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue) { 
+                verificarEstudiante(txtCarnet.getText(), txtNombre, txtTelefono, txtCorreo);
+            }
         });
 
         txtNombre.textProperty().addListener((obs, oldText, newText) -> {
@@ -167,6 +178,40 @@ public class VentanaAsignaciones {
 
             List<Curso> cursosAAsignar = new ArrayList<>(lstCursosSeleccionados.getItems());
 
+            try (Connection conn = ConexionBD.obtenerConexion()) {
+                conn.setAutoCommit(false);
+
+                String sqlEstudiante = "SELECT carnet FROM estudiantes WHERE carnet = ?";
+                PreparedStatement stmtEstudiante = conn.prepareStatement(sqlEstudiante);
+                stmtEstudiante.setString(1, carnet);
+                ResultSet rsEstudiante = stmtEstudiante.executeQuery();
+
+                if (!rsEstudiante.next()) {
+                    String sqlInsertEstudiante = "INSERT INTO estudiantes (carnet, nombre, telefono, correo_electronico) VALUES (?, ?, ?, ?)";
+                    PreparedStatement stmtInsertEstudiante = conn.prepareStatement(sqlInsertEstudiante);
+                    stmtInsertEstudiante.setString(1, carnet);
+                    stmtInsertEstudiante.setString(2, nombre);
+                    stmtInsertEstudiante.setString(3, telefono);
+                    stmtInsertEstudiante.setString(4, correo);
+                    stmtInsertEstudiante.executeUpdate();
+                }
+
+                String sqlInsertAsignacion = "INSERT INTO asignaciones (carnet_estudiante, codigo_curso, fecha_asignacion, pagado) VALUES (?, ?, ?, ?)";
+                PreparedStatement stmtInsertAsignacion = conn.prepareStatement(sqlInsertAsignacion);
+
+                for (Curso curso : cursosAAsignar) {
+                    stmtInsertAsignacion.setString(1, carnet);
+                    stmtInsertAsignacion.setString(2, curso.getCodigo());
+                    stmtInsertAsignacion.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
+                    stmtInsertAsignacion.setBoolean(4, pagado);
+                    stmtInsertAsignacion.executeUpdate();
+                }
+
+                conn.commit();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+
             StringBuilder mensaje = new StringBuilder();
             mensaje.append("Datos del estudiante:\n");
             mensaje.append("Nombre: ").append(nombre).append("\n");
@@ -175,7 +220,7 @@ public class VentanaAsignaciones {
             mensaje.append("Correo: ").append(correo).append("\n");
             mensaje.append("Fecha: ").append(LocalDate.now()).append("\n");
             mensaje.append("Pago realizado: ").append(pagado ? "Sí" : "No").append("\n");
-            mensaje.append("Cursos a asignar:\n");
+            mensaje.append("Cursos asignados:\n");
             for (Curso curso : cursosAAsignar) {
                 mensaje.append("- ").append(curso.getNombre()).append("\n");
             }
@@ -239,7 +284,6 @@ public class VentanaAsignaciones {
         layoutPrincipal.setStyle("-fx-padding: 20;");
 
         Scene scene = new Scene(layoutPrincipal, 600, 700);
-        scene.getStylesheets().add(getClass().getResource("estilos.css").toExternalForm());
         stage.setScene(scene);
 
         stage.setOnHidden(e -> stagePrincipal.show());
@@ -247,13 +291,40 @@ public class VentanaAsignaciones {
         stage.show();
     }
 
+    private void verificarEstudiante(String carnet, TextField txtNombre, TextField txtTelefono, TextField txtCorreo) {
+        try (Connection conn = ConexionBD.obtenerConexion()) {
+            String sql = "SELECT nombre, telefono, correo_electronico FROM estudiantes WHERE carnet = ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, carnet);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                txtNombre.setText(rs.getString("nombre"));
+                txtTelefono.setText(rs.getString("telefono"));
+                txtCorreo.setText(rs.getString("correo_electronico"));
+            } else {
+                txtNombre.clear();
+                txtTelefono.clear();
+                txtCorreo.clear();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     private List<Curso> obtenerCursos() {
         List<Curso> listaCursos = new ArrayList<>();
-        listaCursos.add(new Curso("C001", "Matemáticas"));
-        listaCursos.add(new Curso("C002", "Física"));
-        listaCursos.add(new Curso("C003", "Química"));
-        listaCursos.add(new Curso("C004", "Biología"));
-        listaCursos.add(new Curso("C005", "Historia"));
+        try (Connection conn = ConexionBD.obtenerConexion()) {
+            String sql = "SELECT codigo, nombre FROM cursos";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String codigo = rs.getString("codigo");
+                String nombre = rs.getString("nombre");
+                listaCursos.add(new Curso(codigo, nombre));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return listaCursos;
     }
 
